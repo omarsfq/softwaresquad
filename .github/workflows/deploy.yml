@@ -1,44 +1,91 @@
-name: Deploy Laravel Changes to InfinityFree (No Public Folder)
+name: Deploy to InfinityFree (FTP)
 
 on:
   push:
-    branches:
-      - main    # أو master حسب الفرع لديك
+    branches: ["main"]
+
+concurrency:
+  group: deploy-infinityfree
+  cancel-in-progress: true
 
 jobs:
-  ftp-deploy:
-    name: FTP Deploy
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Deploy only backend changes
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
         with:
-          server: ftpupload.net
-          username: ${{ secrets.FTP_USER }}
-          password: ${{ secrets.FTP_PASS }}
-          protocol: ftp
+          php-version: "8.2"
+          extensions: mbstring, intl, pdo_mysql, bcmath, curl, gd, zip
+          coverage: none
 
-          # مجلد مشروعك كله محلياً
+      - name: Install dependencies (no-dev)
+        run: |
+          composer install --no-dev --prefer-dist --optimize-autoloader
+          php artisan config:cache || true
+          php artisan route:cache || true
+          php artisan view:cache || true
+
+      - name: Setup Node and build assets
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+      - name: Build Frontend
+        run: |
+          if [ -f package.json ]; then
+            npm ci
+            npm run build
+          fi
+
+      - name: Prepare public for shared hosting
+        run: |
+          mkdir -p public-prepared
+          rsync -av --delete public/ public-prepared/
+          if [ -f public-prepared/index.php ]; then
+            sed -i "s#require __DIR__.'/../vendor/autoload.php';#require __DIR__.'/app/vendor/autoload.php';#" public-prepared/index.php
+            sed -i "s#require __DIR__.'/../app/vendor/autoload.php';#require __DIR__.'/app/vendor/autoload.php';#" public-prepared/index.php
+            sed -i "s#require_once __DIR__.'/../bootstrap/app.php';#require_once __DIR__.'/app/bootstrap/app.php';#" public-prepared/index.php
+            sed -i "s#require_once __DIR__.'/../app/bootstrap/app.php';#require_once __DIR__.'/app/bootstrap/app.php';#" public-prepared/index.php
+          fi
+
+      - name: Upload app core to htdocs/app
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT }}
           local-dir: ./
-
-          # مجلد Laravel في الاستضافة (خارج htdocs)
-          server-dir: /softwaresquad.net/htdocs/  # عدله حسب مسارك
-
-          # استثناء ملفات لا نريد رفعها
+          server-dir: ${{ secrets.REMOTE_PUBLIC }}/app/
           exclude: |
             **/public/**
-            public/**
-            node_modules/**
-            vendor/**
-            .git/**
-            .github/**
-            storage/logs/**
-            storage/framework/cache/**
-            storage/framework/sessions/**
-            *.env
-            composer.lock
-            package-lock.json
+            **/.git/**
+            **/.github/**
+            **/node_modules/**
+            **/.env
+            storage/logs/*.log
+
+      - name: Upload public to htdocs root
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT }}
+          local-dir: public-prepared/
+          server-dir: ${{ secrets.REMOTE_PUBLIC }}/
+          exclude: |
+            **/.git/**
+            **/.github/**
+            **/node_modules/**
+
+      - name: Optional Healthcheck
+        if: ${{ env.HEALTHCHECK_URL != '' }}
+        env:
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+        run: |
+          curl -fsS "$HEALTHCHECK_URL" || exit 1
