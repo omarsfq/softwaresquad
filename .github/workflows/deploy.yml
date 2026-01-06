@@ -1,89 +1,44 @@
-name: Deploy to InfinityFree (FTP)
+name: Deploy Laravel Changes to InfinityFree (No Public Folder)
 
 on:
   push:
-    branches: ["main"]
-
-concurrency:
-  group: deploy-infinityfree
-  cancel-in-progress: true
+    branches:
+      - main    # أو master حسب الفرع لديك
 
 jobs:
-  deploy:
+  ftp-deploy:
+    name: FTP Deploy
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+      - name: Deploy only backend changes
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          php-version: "8.2"
-          extensions: mbstring, intl, pdo_mysql, bcmath, curl, gd, zip
-          coverage: none
+          server: ftpupload.net
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASS }}
+          protocol: ftp
 
-      - name: Install dependencies (no-dev)
-        run: |
-          composer install --no-dev --prefer-dist --optimize-autoloader
-          php artisan config:cache || true
-          php artisan route:cache || true
-          php artisan view:cache || true
-
-      - name: Setup Node and build assets
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-          cache: "npm"
-      - name: Build Frontend
-        run: |
-          if [ -f package.json ]; then
-            npm ci
-            npm run build
-          fi
-
-      - name: Prepare public for shared hosting
-        run: |
-          mkdir -p public-prepared
-          rsync -av --delete public/ public-prepared/
-          if [ -f public-prepared/index.php ]; then
-            sed -i "s#require __DIR__.'/../vendor/autoload.php';#require __DIR__.'/../app/vendor/autoload.php';#" public-prepared/index.php
-            sed -i "s#require_once __DIR__.'/../bootstrap/app.php';#require_once __DIR__.'/../app/bootstrap/app.php';#" public-prepared/index.php
-          fi
-
-      - name: Upload app core to /app
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT }}
+          # مجلد مشروعك كله محلياً
           local-dir: ./
-          server-dir: ${{ secrets.REMOTE_APP }}/
+
+          # مجلد Laravel في الاستضافة (خارج htdocs)
+          server-dir: /htdocs/  # عدله حسب مسارك
+
+          # استثناء ملفات لا نريد رفعها
           exclude: |
             **/public/**
-            **/.git/**
-            **/.github/**
-            **/node_modules/**
-            **/.env
-            storage/logs/*.log
-
-      - name: Upload public to /htdocs
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT }}
-          local-dir: public-prepared/
-          server-dir: ${{ secrets.REMOTE_PUBLIC }}/
-          exclude: |
-            **/.git/**
-            **/.github/**
-            **/node_modules/**
-
-      - name: Optional Healthcheck
-        if: ${{ env.HEALTHCHECK_URL != '' }}
-        env:
-          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
-        run: |
-          curl -fsS "$HEALTHCHECK_URL" || exit 1
+            public/**
+            node_modules/**
+            vendor/**
+            .git/**
+            .github/**
+            storage/logs/**
+            storage/framework/cache/**
+            storage/framework/sessions/**
+            *.env
+            composer.lock
+            package-lock.json
