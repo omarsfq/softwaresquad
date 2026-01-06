@@ -46,13 +46,11 @@ jobs:
           mkdir -p public-prepared
           rsync -av --delete public/ public-prepared/
           if [ -f public-prepared/index.php ]; then
-            sed -i "s#require __DIR__.'/../vendor/autoload.php';#require __DIR__.'/app/vendor/autoload.php';#" public-prepared/index.php
-            sed -i "s#require __DIR__.'/../app/vendor/autoload.php';#require __DIR__.'/app/vendor/autoload.php';#" public-prepared/index.php
-            sed -i "s#require_once __DIR__.'/../bootstrap/app.php';#require_once __DIR__.'/app/bootstrap/app.php';#" public-prepared/index.php
-            sed -i "s#require_once __DIR__.'/../app/bootstrap/app.php';#require_once __DIR__.'/app/bootstrap/app.php';#" public-prepared/index.php
+            sed -i "s#require __DIR__.'/../vendor/autoload.php';#require __DIR__.'/vendor/autoload.php';#" public-prepared/index.php
+            sed -i "s#require_once __DIR__.'/../bootstrap/app.php';#require_once __DIR__.'/bootstrap/app.php';#" public-prepared/index.php
           fi
 
-      - name: Upload app core to htdocs/app
+      - name: Upload project core to htdocs root
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -60,7 +58,7 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           port: ${{ secrets.FTP_PORT }}
           local-dir: ./
-          server-dir: ${{ secrets.REMOTE_PUBLIC }}/app/
+          server-dir: ${{ secrets.REMOTE_PUBLIC }}/
           exclude: |
             **/public/**
             **/.git/**
