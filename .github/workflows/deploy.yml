@@ -57,8 +57,8 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           port: ${{ secrets.FTP_PORT }}
-          local-dir: .
-          server-dir: ${{ secrets.REMOTE_APP }}
+          local-dir: ./
+          server-dir: ${{ secrets.REMOTE_APP }}/
           exclude: |
             **/public/**
             **/.git/**
@@ -74,8 +74,8 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           port: ${{ secrets.FTP_PORT }}
-          local-dir: public-prepared
-          server-dir: ${{ secrets.REMOTE_PUBLIC }}
+          local-dir: public-prepared/
+          server-dir: ${{ secrets.REMOTE_PUBLIC }}/
           exclude: |
             **/.git/**
             **/.github/**
