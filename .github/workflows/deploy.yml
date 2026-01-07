@@ -1,11 +1,27 @@
-name: Deploy to InfinityFree (FTP)
+name: FTP Deploy (Laravel App Layer)
 
 on:
   push:
-    branches: ["main"]
+    branches:
+      - main
+    paths:
+      - app/**
+      - config/**
+      - routes/**
+      - resources/**
+      - bootstrap/app.php
+  workflow_dispatch:
+    inputs:
+      from:
+        description: SHA الأساس للمقارنة
+        required: false
+        default: ""
+
+permissions:
+  contents: read
 
 concurrency:
-  group: deploy-infinityfree
+  group: ftp-deploy-app-layer-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -14,87 +30,113 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.2"
-          extensions: mbstring, intl, pdo_mysql, bcmath, curl, gd, zip
-          coverage: none
+          fetch-depth: 0
 
-      - name: Install dependencies (no-dev)
+      - name: Validate secrets
+        shell: bash
+        run: |
+          required=(FTP_SERVER FTP_USERNAME FTP_PASSWORD REMOTE_PUBLIC)
+          missing=0
+          for s in "${required[@]}"; do
+            if [ -z "${!s}" ]; then
+              echo "Missing secret: $s"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            exit 1
+          fi
         env:
-          APP_ENV: production
-          APP_DEBUG: false
-          CACHE_STORE: file
-          SESSION_DRIVER: file
-          QUEUE_CONNECTION: sync
-          DB_CONNECTION: mysql
-        run: |
-          composer install --no-dev --prefer-dist --optimize-autoloader
-          php artisan optimize:clear
-          php artisan config:cache || true
-          php artisan route:cache || true
-          php artisan view:cache || true
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          REMOTE_PUBLIC: ${{ secrets.REMOTE_PUBLIC }}
 
-      - name: Setup Node and build assets
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-          cache: "npm"
-      - name: Build Frontend
+      - name: Determine diff range
+        id: diff
+        shell: bash
         run: |
-          if [ -f package.json ]; then
-            npm ci
-            npm run build
+          FROM="${{ github.event.inputs.from }}"
+          if [ -z "$FROM" ]; then
+            FROM="${{ github.event.before }}"
+          fi
+          if [ -z "$FROM" ]; then
+            FROM="$(git rev-parse HEAD~1)"
+          fi
+          echo "from=$FROM" >> "$GITHUB_OUTPUT"
+
+      - name: Collect changed files in app layer
+        shell: bash
+        run: |
+          set -e
+          git diff --name-only --diff-filter=AM "${{ steps.diff.outputs.from }}" "${{ github.sha }}" > all_changed.txt
+          grep -E '^(app/|config/|routes/|resources/|bootstrap/app\.php)' all_changed.txt | sed '/^\s*$/d' > changed.txt || true
+          if [ -s changed.txt ]; then
+            echo "Files to upload:"
+            cat changed.txt
+          else
+            echo "No changes in app layer"
           fi
 
-      - name: Prepare public for shared hosting
+      - name: Stop if nothing to upload
+        shell: bash
         run: |
-          mkdir -p public-prepared
-          rsync -av --delete public/ public-prepared/
-          if [ -f public-prepared/index.php ]; then
-            sed -i "s#require __DIR__.'/../vendor/autoload.php';#require __DIR__.'/vendor/autoload.php';#" public-prepared/index.php
-            sed -i "s#require_once __DIR__.'/../bootstrap/app.php';#require_once __DIR__.'/bootstrap/app.php';#" public-prepared/index.php
+          if [ ! -s changed.txt ]; then
+            exit 0
           fi
 
-      - name: Upload project core to htdocs root
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT }}
-          local-dir: ./
-          server-dir: ${{ secrets.REMOTE_PUBLIC }}/
-          exclude: |
-            **/public/**
-            **/public-prepared/**
-            **/.git/**
-            **/.github/**
-            **/node_modules/**
-            **/.env
-            storage/logs/*.log
-            .htaccess
-            index2.html
-
-      - name: Upload public to htdocs root
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT }}
-          local-dir: public-prepared/
-          server-dir: ${{ secrets.REMOTE_PUBLIC }}/
-          exclude: |
-            **/.git/**
-            **/.github/**
-            **/node_modules/**
-
-      - name: Optional Healthcheck
-        env:
-          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
-        if: ${{ env.HEALTHCHECK_URL != '' }}
+      - name: Install lftp
+        shell: bash
         run: |
-          curl -fsS "$HEALTHCHECK_URL" || exit 1
+          sudo apt-get update -y
+          sudo apt-get install -y lftp
+
+      - name: Upload changed files via FTP
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          REMOTE_PUBLIC: ${{ secrets.REMOTE_PUBLIC }}
+        shell: bash
+        run: |
+          set -e
+          echo "set ftp:passive-mode true" > lftp.cmd
+          echo "set net:max-retries 2" >> lftp.cmd
+          echo "set net:timeout 20" >> lftp.cmd
+          echo "cd \"$REMOTE_PUBLIC\"" >> lftp.cmd
+          while IFS= read -r f; do
+            d="$(dirname "$f")"
+            if [ "$d" = "." ]; then d=""; fi
+            if [ -n "$d" ]; then
+              echo "mkdir -p -f \"$d\"" >> lftp.cmd
+              echo "put -O \"$d\" \"$f\"" >> lftp.cmd
+            else
+              echo "put \"$f\"" >> lftp.cmd
+            fi
+          done < changed.txt
+          echo "bye" >> lftp.cmd
+          lftp -u "$FTP_USERNAME","$FTP_PASSWORD" "$FTP_SERVER" -f lftp.cmd
+
+      - name: Verify uploaded files exist remotely
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          REMOTE_PUBLIC: ${{ secrets.REMOTE_PUBLIC }}
+        shell: bash
+        run: |
+          set -e
+          echo "cd \"$REMOTE_PUBLIC\"" > verify.cmd
+          while IFS= read -r f; do
+            d="$(dirname "$f")"
+            b="$(basename "$f")"
+            if [ "$d" = "." ]; then d=""; fi
+            if [ -n "$d" ]; then
+              echo "cls -l \"$d\" | grep \" $b$\" || echo \"Missing: $f\"" >> verify.cmd
+            else
+              echo "cls -l | grep \" $b$\" || echo \"Missing: $f\"" >> verify.cmd
+            fi
+          done < changed.txt
+          echo "bye" >> verify.cmd
+          lftp -u "$FTP_USERNAME","$FTP_PASSWORD" "$FTP_SERVER" -f verify.cmd
