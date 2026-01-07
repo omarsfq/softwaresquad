@@ -19,11 +19,6 @@ Route::get('/dashboard', function () {
     return redirect()->route('admin.projects.index');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
-// رابط مخصص لإصلاح مشكلة 404
-Route::get('/dashboard', function () {
-    return redirect()->route('home');
-})->middleware(['auth', 'verified'])->name('dashboard');
-
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

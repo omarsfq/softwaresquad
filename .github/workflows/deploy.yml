@@ -25,6 +25,7 @@ jobs:
       - name: Install dependencies (no-dev)
         run: |
           composer install --no-dev --prefer-dist --optimize-autoloader
+          php artisan optimize:clear
           php artisan config:cache || true
           php artisan route:cache || true
           php artisan view:cache || true
@@ -61,11 +62,14 @@ jobs:
           server-dir: ${{ secrets.REMOTE_PUBLIC }}/
           exclude: |
             **/public/**
+            **/public-prepared/**
             **/.git/**
             **/.github/**
             **/node_modules/**
             **/.env
             storage/logs/*.log
+            .htaccess
+            index2.html
 
       - name: Upload public to htdocs root
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
@@ -82,8 +86,6 @@ jobs:
             **/node_modules/**
 
       - name: Optional Healthcheck
-        if: ${{ env.HEALTHCHECK_URL != '' }}
-        env:
-          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+        if: ${{ secrets.HEALTHCHECK_URL != '' }}
         run: |
-          curl -fsS "$HEALTHCHECK_URL" || exit 1
+          curl -fsS "${{ secrets.HEALTHCHECK_URL }}" || exit 1
