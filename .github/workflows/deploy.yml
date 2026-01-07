@@ -104,6 +104,7 @@ jobs:
           echo "set ftp:passive-mode true" > lftp.cmd
           echo "set net:max-retries 2" >> lftp.cmd
           echo "set net:timeout 20" >> lftp.cmd
+          echo "open -u \"$FTP_USERNAME\",\"$FTP_PASSWORD\" \"$FTP_SERVER\"" >> lftp.cmd
           echo "cd \"$REMOTE_PUBLIC\"" >> lftp.cmd
           while IFS= read -r f; do
             d="$(dirname "$f")"
@@ -116,7 +117,7 @@ jobs:
             fi
           done < changed.txt
           echo "bye" >> lftp.cmd
-          lftp -u "$FTP_USERNAME","$FTP_PASSWORD" "$FTP_SERVER" -f lftp.cmd
+          lftp -f lftp.cmd
 
       - name: Verify uploaded files exist remotely
         env:
@@ -127,7 +128,8 @@ jobs:
         shell: bash
         run: |
           set -e
-          echo "cd \"$REMOTE_PUBLIC\"" > verify.cmd
+          echo "open -u \"$FTP_USERNAME\",\"$FTP_PASSWORD\" \"$FTP_SERVER\"" > verify.cmd
+          echo "cd \"$REMOTE_PUBLIC\"" >> verify.cmd
           while IFS= read -r f; do
             d="$(dirname "$f")"
             b="$(basename "$f")"
@@ -139,4 +141,4 @@ jobs:
             fi
           done < changed.txt
           echo "bye" >> verify.cmd
-          lftp -u "$FTP_USERNAME","$FTP_PASSWORD" "$FTP_SERVER" -f verify.cmd
+          lftp -f verify.cmd
