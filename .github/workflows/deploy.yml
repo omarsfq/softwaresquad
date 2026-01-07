@@ -23,6 +23,13 @@ jobs:
           coverage: none
 
       - name: Install dependencies (no-dev)
+        env:
+          APP_ENV: production
+          APP_DEBUG: false
+          CACHE_STORE: file
+          SESSION_DRIVER: file
+          QUEUE_CONNECTION: sync
+          DB_CONNECTION: mysql
         run: |
           composer install --no-dev --prefer-dist --optimize-autoloader
           php artisan optimize:clear
