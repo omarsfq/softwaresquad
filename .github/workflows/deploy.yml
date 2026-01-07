@@ -86,6 +86,8 @@ jobs:
             **/node_modules/**
 
       - name: Optional Healthcheck
-        if: ${{ secrets.HEALTHCHECK_URL != '' }}
+        env:
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+        if: ${{ env.HEALTHCHECK_URL != '' }}
         run: |
-          curl -fsS "${{ secrets.HEALTHCHECK_URL }}" || exit 1
+          curl -fsS "$HEALTHCHECK_URL" || exit 1
