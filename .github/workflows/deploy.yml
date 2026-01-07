@@ -10,7 +10,6 @@ on:
       - routes/**
       - resources/**
       - bootstrap/app.php
-      - vendor/**
   workflow_dispatch:
     inputs:
       from:
