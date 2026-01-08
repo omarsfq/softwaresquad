@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - composer.lock
-      - vendor/**
   workflow_dispatch:
     inputs:
       from:
@@ -50,30 +49,36 @@ jobs:
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           REMOTE_PUBLIC: ${{ secrets.REMOTE_PUBLIC }}
 
-      - name: Determine diff range
-        id: diff
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer
+          coverage: none
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: composer-${{ runner.os }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            composer-${{ runner.os }}-
+
+      - name: Install vendor with Composer
         shell: bash
         run: |
-          FROM="${{ github.event.inputs.from }}"
-          if [ -z "$FROM" ]; then
-            FROM="${{ github.event.before }}"
-          fi
-          if [ -z "$FROM" ]; then
-            FROM="$(git rev-parse HEAD~1)"
-          fi
-          echo "from=$FROM" >> "$GITHUB_OUTPUT"
+          composer install --no-dev --prefer-dist --no-interaction --no-progress
 
-      - name: Collect changed vendor files
+      - name: Collect vendor files to upload
         shell: bash
         run: |
           set -e
-          git diff --name-only --diff-filter=AM "${{ steps.diff.outputs.from }}" "${{ github.sha }}" > all_changed.txt
-          grep -E '^vendor/' all_changed.txt | sed '/^\s*$/d' > changed.txt || true
+          find vendor -type f > changed.txt || true
           if [ -s changed.txt ]; then
             echo "Files to upload:"
             cat changed.txt
           else
-            echo "No vendor changes"
+            echo "No vendor files found"
           fi
 
       - name: Stop if nothing to upload
