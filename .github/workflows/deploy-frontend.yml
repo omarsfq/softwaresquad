@@ -1,14 +1,17 @@
-name: FTP Deploy (Laravel App Layer)
+name: FTP Deploy (Frontend)
 
 on:
   push:
     branches:
       - main
     paths:
-      - app/**
-      - config/**
-      - routes/**
-      - bootstrap/app.php
+      - resources/views/**/*.blade.php
+      - resources/css/**
+      - resources/js/**
+      - tailwind.config.js
+      - vite.config.js
+      - package.json
+      - package-lock.json
   workflow_dispatch:
     inputs:
       from:
@@ -20,7 +23,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ftp-deploy-app-layer-${{ github.ref }}
+  group: ftp-deploy-frontend-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -65,17 +68,43 @@ jobs:
           fi
           echo "from=$FROM" >> "$GITHUB_OUTPUT"
 
-      - name: Collect changed files in app layer
+      - name: Collect changed frontend files
         shell: bash
         run: |
           set -e
           git diff --name-only --diff-filter=AM "${{ steps.diff.outputs.from }}" "${{ github.sha }}" > all_changed.txt
-          grep -E '^(app/|config/|routes/|resources/|bootstrap/app\.php)' all_changed.txt | sed '/^\s*$/d' > changed.txt || true
+          grep -E '^(resources/views/.*\.blade\.php|resources/css/|resources/js/|tailwind\.config\.js|vite\.config\.js|package\.json|package-lock\.json)' all_changed.txt | sed '/^\s*$/d' > changed.txt || true
           if [ -s changed.txt ]; then
-            echo "Files to upload:"
+            echo "Frontend files to upload:"
             cat changed.txt
           else
-            echo "No changes in app layer"
+            echo "No frontend changes"
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build assets
+        run: npm run build
+
+      - name: Append built assets to upload list
+        shell: bash
+        run: |
+          if [ -d "public/build" ]; then
+            find public/build -type f > built_list.txt || true
+            if [ -s built_list.txt ]; then
+              cat built_list.txt >> changed.txt
+              sort -u -o changed.txt changed.txt
+              echo "Built assets appended:"
+              cat built_list.txt
+            fi
           fi
 
       - name: Stop if nothing to upload
@@ -141,3 +170,4 @@ jobs:
           done < changed.txt
           echo "bye" >> verify.cmd
           lftp -f verify.cmd
+
