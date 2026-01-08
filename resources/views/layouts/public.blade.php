@@ -32,6 +32,9 @@
     <link rel="canonical" href="{{ url()->current() }}">
     <link rel="preconnect" href="https://www.googletagmanager.com" crossorigin>
     <link rel="dns-prefetch" href="//www.googletagmanager.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
     
     {{-- تم تصحيح امتداد ونوع الأيقونة --}}
     <link rel="icon" type="image/png" href="https://softwaresquad.net/logo.png">
