@@ -1,3 +1,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html { scroll-behavior: smooth; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-block rounded-full px-6 py-3 font-bold text-white bg-gradient-to-r from-brand-green-light to-brand-green hover:shadow-lg hover:shadow-brand-green/30 transition;
+  }
+}
