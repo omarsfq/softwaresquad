@@ -8,13 +8,13 @@
         </p>
         <div class="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
             <a href="{{ route('projects.index') }}"
-               class="inline-flex items-center justify-center font-bold rounded-full py-3 px-8 text-lg text-white
+               class="inline-flex flex-none w-auto max-w-max whitespace-nowrap items-center justify-center font-bold rounded-full py-3 px-8 text-lg text-white
                       bg-gradient-to-r from-brand-green-light to-brand-green
                       hover:shadow-lg hover:shadow-brand-green/30 transition-all duration-300">
                 استعرض أعمالنا
             </a>
             <a href="{{ route('contact.form') }}"
-               class="inline-flex items-center justify-center font-bold rounded-full py-3 px-8 text-lg
+               class="inline-flex flex-none w-auto max-w-max whitespace-nowrap items-center justify-center font-bold rounded-full py-3 px-8 text-lg
                       bg-white text-brand-blue hover:bg-slate-100 transition-all duration-300">
                 ابدأ مشروعك الآن
             </a>
